@@ -16,9 +16,11 @@ export default function handler(req, res) {
       if (m) infoHash = (m[1] || m[0]).toLowerCase()
     }
 
-    res.status(200).json({
+    // Return a non-OK status so the frontend treats this as an informational error
+    res.status(501).json({
+      error: 'streaming_not_supported_in_serverless',
       fallback: true,
-      note: 'This is a fallback response. The actual streaming endpoint may not be deployed.\nPlease ensure api/start-stream.js is committed and redeployed.',
+      note: 'This is a fallback response. The actual streaming endpoint is not available on Vercel serverless.\nTo enable streaming, deploy the long-running server (stream.js) to a VPS or Render and point the frontend API_BASE to it.',
       infoHash
     })
   } catch (e) {

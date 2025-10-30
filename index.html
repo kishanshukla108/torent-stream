@@ -189,8 +189,15 @@
                     renderFileList(data);
                     statusDiv.className = 'success';
                     statusDiv.textContent = 'File list fetched. Click Stream next to play a file.';
+                } else if (data && data.note) {
+                    // Friendly message from server (e.g. fallback explaining serverless limitations)
+                    statusDiv.className = 'error';
+                    statusDiv.textContent = 'Server note: ' + data.note;
+                } else if (data && data.error) {
+                    statusDiv.className = 'error';
+                    statusDiv.textContent = 'Error fetching files: ' + data.error;
                 } else {
-                    throw new Error(data.error || `Server responded with status ${response.status}`)
+                    throw new Error(data && data.error ? data.error : `Server responded with status ${response.status}`)
                 }
             } catch (error) {
                 statusDiv.className = 'error';
