@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Torrent Streamer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .input-group {
+            margin-bottom: 15px;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #status {
+            margin-top: 20px;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #dff0d8;
+            color: #3c763d;
+        }
+        .error {
+            background-color: #f2dede;
+            color: #a94442;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Torrent Streamer</h1>
+        <div class="input-group">
+            <label for="magnet">Magnet Link:</label>
+            <input type="text" id="magnet" placeholder="Paste your magnet link here...">
+        </div>
+        <div class="input-group">
+            <!--<label for="fileIndex">File Index (first press "Find files" to discover indexes, then enter index to play):</label>-->
+            <input type="hidden" id="fileIndex" min="0" placeholder="Enter index after listing files">
+        </div>
+        <div class="input-group">
+             <!--<label for="apiBase">API Base (if opening file://, set to http://localhost:3000):</label>-->
+            <input type="hidden" id="apiBase" placeholder="http://localhost:3000">
+        </div>
+    <button onclick="listFiles()">Find files</button>
+   
+    <div id="fileList"></div>
+     <div id="status"></div>
+    </div>
+
+    <script>
+        async function startStreaming() {
+            const magnetLink = document.getElementById('magnet').value;
+            const fileIndexInput = document.getElementById('fileIndex').value;
+            const statusDiv = document.getElementById('status');
+
+            if (!magnetLink) {
+                statusDiv.className = 'error';
+                statusDiv.textContent = 'Please enter a magnet link';
+                return;
+            }
+
+            // Require explicit index from the user (user should press "Find files" first to see indexes)
+            if (fileIndexInput === '') {
+                statusDiv.className = 'error';
+                statusDiv.textContent = 'Please find files first and enter the file index to play';
+                return;
+            }
+
+            try {
+                const explicit = document.getElementById('apiBase').value.trim();
+                const apiBase = explicit || (window.API_BASE !== undefined ? window.API_BASE : '')
+
+                const response = await fetch(`${apiBase}/start-stream`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ magnet: magnetLink, fileIndex: parseInt(fileIndexInput, 10) })
+                });
+
+                const data = await response.json();
+                if (data.url) {
+                    statusDiv.className = 'success';
+                    statusDiv.innerHTML = `Stream ready! <br>
+                        <a href="${data.url}" target="_blank">Click here to open in browser</a><br>
+                        Or copy this URL to VLC: ${data.url}`;
+                } else {
+                    throw new Error(data.error || 'No streaming URL received')
+                }
+            } catch (error) {
+                statusDiv.className = 'error';
+                statusDiv.textContent = 'Error starting stream: ' + error.message;
+            }
+        }
+
+        // List files only (used to discover file indexes before streaming)
+        async function listFiles() {
+            const magnetLink = document.getElementById('magnet').value;
+            const statusDiv = document.getElementById('status');
+
+            if (!magnetLink) {
+                statusDiv.className = 'error';
+                statusDiv.textContent = 'Please enter a magnet link';
+                return;
+            }
+
+            try {
+                const explicit = document.getElementById('apiBase').value.trim();
+                const apiBase = explicit || (window.API_BASE !== undefined ? window.API_BASE : '')
+
+                statusDiv.className = '';
+                statusDiv.textContent = 'Fetching file list...';
+
+                const response = await fetch(`${apiBase}/start-stream`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ magnet: magnetLink, fileIndex: null })
+                });
+
+                const data = await response.json();
+                if (data.files) {
+                    renderFileList(data);
+                    statusDiv.className = 'success';
+                    statusDiv.textContent = 'File list fetched. Click Stream next to play a file or enter an index and press Start Streaming.';
+                } else {
+                    throw new Error(data.error || 'No files received')
+                }
+            } catch (error) {
+                statusDiv.className = 'error';
+                statusDiv.textContent = 'Error fetching files: ' + error.message;
+            }
+        }
+
+        function renderFileList(data) {
+            const fileListDiv = document.getElementById('fileList')
+            fileListDiv.innerHTML = ''
+            const title = document.createElement('h3')
+            title.textContent = `Files in ${data.name || data.infoHash}`
+            fileListDiv.appendChild(title)
+
+            const ul = document.createElement('ul')
+            data.files.forEach(f => {
+                const li = document.createElement('li')
+                li.textContent = `${f.index} - ${f.name} (${f.length} bytes)`
+                const btn = document.createElement('button')
+                btn.textContent = 'Stream'
+                btn.style.marginLeft = '10px'
+                btn.style.marginTop = '5px'
+                btn.onclick = () => streamFile(data.infoHash, f.index)
+                li.appendChild(btn)
+                ul.appendChild(li)
+            })
+            fileListDiv.appendChild(ul)
+        }
+
+        async function streamFile(infoHash, index) {
+            const magnetLink = document.getElementById('magnet').value;
+            const explicit = document.getElementById('apiBase').value.trim();
+            const apiBase = explicit || (window.API_BASE !== undefined ? window.API_BASE : '')
+            const statusDiv = document.getElementById('status')
+            statusDiv.className = ''
+            statusDiv.textContent = 'Starting stream...'
+
+            try {
+                const response = await fetch(`${apiBase}/start-stream`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ magnet: magnetLink, fileIndex: index })
+                })
+                const data = await response.json()
+                if (data.url) {
+                    statusDiv.className = 'success'
+                    statusDiv.innerHTML = `Stream ready: <a href="${data.url}" target="_blank">${data.url}</a>`
+                } else {
+                    throw new Error(data.error || 'No URL')
+                }
+            } catch (err) {
+                statusDiv.className = 'error'
+                statusDiv.textContent = 'Error: ' + err.message
+            }
+        }
+    </script>
+    <script>
+        // If opened via file://, suggest localhost server by pre-filling the API Base input
+        (function() {
+            try {
+                const apiInput = document.getElementById('apiBase')
+                if (location.protocol === 'file:' && apiInput && !apiInput.value) {
+                    apiInput.value = 'http://localhost:3000'
+                }
+                // If server injected window.API_BASE (when served over HTTP), prefer that
+                if (window.API_BASE && apiInput && !apiInput.value) {
+                    apiInput.value = window.API_BASE
+                }
+            } catch (e) {
+                // noop
+            }
+        })()
+    </script>
+</body>
+</html>
