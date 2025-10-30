@@ -100,7 +100,8 @@
                 const explicit = document.getElementById('apiBase').value.trim();
                 const apiBase = explicit || (window.API_BASE !== undefined ? window.API_BASE : '')
 
-                const response = await fetch(`${apiBase}/api/start-stream`, {
+                // Try the preferred API path first
+                let response = await fetch(`${apiBase}/api/start-stream`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -108,14 +109,31 @@
                     body: JSON.stringify({ magnet: magnetLink, fileIndex: parseInt(fileIndexInput, 10) })
                 });
 
-                const data = await response.json();
-                if (data.url) {
+                // If API path was not found, try legacy path (some deployments use `/start-stream`)
+                if (response.status === 404) {
+                    response = await fetch(`${apiBase}/start-stream`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ magnet: magnetLink, fileIndex: parseInt(fileIndexInput, 10) })
+                    });
+                }
+
+                const contentType = response.headers.get('content-type') || '';
+                let data;
+                if (contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    const text = await response.text();
+                    throw new Error(`Server returned non-JSON (status ${response.status}): ${text}`);
+                }
+
+                if (response.ok && data.url) {
                     statusDiv.className = 'success';
                     statusDiv.innerHTML = `Stream ready! <br>
                         <a href="${data.url}" target="_blank">Click here to open in browser</a><br>
                         Or copy this URL to VLC: ${data.url}`;
                 } else {
-                    throw new Error(data.error || 'No streaming URL received')
+                    throw new Error(data.error || `Server responded with status ${response.status}`)
                 }
             } catch (error) {
                 statusDiv.className = 'error';
@@ -141,7 +159,8 @@
                 statusDiv.className = '';
                 statusDiv.textContent = 'Fetching file list...';
 
-                const response = await fetch(`${apiBase}/api/start-stream`, {
+                // Try API path first
+                let response = await fetch(`${apiBase}/api/start-stream`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -149,13 +168,29 @@
                     body: JSON.stringify({ magnet: magnetLink, fileIndex: null })
                 });
 
-                const data = await response.json();
-                if (data.files) {
+                if (response.status === 404) {
+                    response = await fetch(`${apiBase}/start-stream`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ magnet: magnetLink, fileIndex: null })
+                    });
+                }
+
+                const contentType = response.headers.get('content-type') || '';
+                let data;
+                if (contentType.includes('application/json')) {
+                    data = await response.json();
+                } else {
+                    const text = await response.text();
+                    throw new Error(`Server returned non-JSON (status ${response.status}): ${text}`);
+                }
+
+                if (response.ok && data.files) {
                     renderFileList(data);
                     statusDiv.className = 'success';
-                    statusDiv.textContent = 'File list fetched. Click Stream next to play a file or enter an index and press Start Streaming.';
+                    statusDiv.textContent = 'File list fetched. Click Stream next to play a file.';
                 } else {
-                    throw new Error(data.error || 'No files received')
+                    throw new Error(data.error || `Server responded with status ${response.status}`)
                 }
             } catch (error) {
                 statusDiv.className = 'error';
@@ -194,17 +229,35 @@
             statusDiv.textContent = 'Starting stream...'
 
             try {
-                const response = await fetch(`${apiBase}/api/start-stream`, {
+                // Try API path first
+                let response = await fetch(`${apiBase}/api/start-stream`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ magnet: magnetLink, fileIndex: index })
                 })
-                const data = await response.json()
-                if (data.url) {
+
+                if (response.status === 404) {
+                    response = await fetch(`${apiBase}/start-stream`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ magnet: magnetLink, fileIndex: index })
+                    })
+                }
+
+                const contentType = response.headers.get('content-type') || '';
+                let data;
+                if (contentType.includes('application/json')) {
+                    data = await response.json()
+                } else {
+                    const text = await response.text()
+                    throw new Error(`Server returned non-JSON (status ${response.status}): ${text}`)
+                }
+
+                if (response.ok && data.url) {
                     statusDiv.className = 'success'
                     statusDiv.innerHTML = `Stream ready: <a href="${data.url}" target="_blank">${data.url}</a>`
                 } else {
-                    throw new Error(data.error || 'No URL')
+                    throw new Error(data.error || `Server responded with status ${response.status}`)
                 }
             } catch (err) {
                 statusDiv.className = 'error'
