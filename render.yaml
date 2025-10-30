@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: torent-stream
+    env: node
+    branch: main
+    plan: free
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    autoDeploy: true
