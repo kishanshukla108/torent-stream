@@ -4,17 +4,19 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "nodemon stream.js"
+    "dev": "nodemon api/start-stream.js",
+    "start": "node api/start-stream.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
-  "mime": "^4.0.7",
-  "nodemon": "^3.1.10",
-  "webtorrent": "latest",
-  "parse-torrent": "latest"
+    "mime": "^4.0.7",
+    "webtorrent": "^2.1.27",
+    "parse-torrent": "^9.1.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
   }
 }

@@ -100,7 +100,7 @@
                 const explicit = document.getElementById('apiBase').value.trim();
                 const apiBase = explicit || (window.API_BASE !== undefined ? window.API_BASE : '')
 
-                const response = await fetch(`${apiBase}/start-stream`, {
+                const response = await fetch(`${apiBase}/api/start-stream`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -141,7 +141,7 @@
                 statusDiv.className = '';
                 statusDiv.textContent = 'Fetching file list...';
 
-                const response = await fetch(`${apiBase}/start-stream`, {
+                const response = await fetch(`${apiBase}/api/start-stream`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -194,7 +194,7 @@
             statusDiv.textContent = 'Starting stream...'
 
             try {
-                const response = await fetch(`${apiBase}/start-stream`, {
+                const response = await fetch(`${apiBase}/api/start-stream`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ magnet: magnetLink, fileIndex: index })
