@@ -1,8 +1,9 @@
-import WebTorrent from 'webtorrent'
 import parseTorrent from 'parse-torrent'
-import http from 'http'
 
-const client = new WebTorrent()
+// Note: WebTorrent (a long-running P2P client) is not suitable for
+// Vercel serverless functions. Attempting to run it in this environment
+// often causes runtime failures (FUNCTION_INVOCATION_FAILED) because
+// serverless functions are short-lived and restrict network/socket usage.
 
 export default async function handler(req, res) {
     // Enable CORS
@@ -23,95 +24,49 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { magnet, fileIndex } = req.body
+        const { magnet, fileIndex } = req.body || {}
 
         if (!magnet) {
             res.status(400).json({ error: 'Magnet link required' })
             return
         }
 
-        // Only attempt to parse if the input resembles a magnet or an infoHash
-        let parsedTorrent = null
-        const magnetStr = magnet
-        const looksLikeMagnet = /^magnet:\?/.test(magnetStr)
-        const looksLikeHash = /^[A-Fa-f0-9]{40}$/.test(magnetStr.replace(/^urn:btih:/i, ''))
-
-        if (looksLikeMagnet || looksLikeHash) {
-            try {
-                parsedTorrent = parseTorrent(magnetStr)
-                console.log('parseTorrent result:', { infoHash: parsedTorrent.infoHash, name: parsedTorrent.name })
-            } catch (e) {
-                console.log('parseTorrent failed, proceeding with fallback extraction')
-            }
+        // Try to extract infoHash locally using parse-torrent (no network needed)
+        let parsed = null
+        try {
+            parsed = parseTorrent(magnet)
+        } catch (e) {
+            // ignore - we'll try regex fallback
         }
 
-        // Fallback: extract btih manually if parse-torrent didn't find it
-        if (!parsedTorrent || !parsedTorrent.infoHash) {
-            const m = (magnetStr || '').match(/btih:([A-Fa-f0-9]{40})/i) || (magnetStr || '').match(/([A-Fa-f0-9]{40})/)
-            if (m) {
-                const found = (m[1] || m[0]).toLowerCase()
-                parsedTorrent = parsedTorrent || {}
-                parsedTorrent.infoHash = found
-                console.log('Extracted infoHash via regex fallback:', found)
-            } else {
-                console.log('Could not extract infoHash from magnet')
-            }
+        if (!parsed || !parsed.infoHash) {
+            const m = (magnet || '').match(/btih:([A-Fa-f0-9]{40})/i) || (magnet || '').match(/([A-Fa-f0-9]{40})/)
+            if (m) parsed = { infoHash: (m[1] || m[0]).toLowerCase() }
         }
 
-        // Add the torrent and wait for metadata
-        return new Promise((resolve, reject) => {
-            const addTarget = (parsedTorrent && parsedTorrent.infoHash) 
-                ? `magnet:?xt=urn:btih:${parsedTorrent.infoHash}` 
-                : magnet
+        // If we are running on Vercel or another serverless platform, avoid running WebTorrent.
+        // Instead return the derived infoHash and a clear message that metadata fetching
+        // (peers/tracker DHT lookup) isn't supported in this environment.
+        const runningServerless = !!(process.env.VERCEL || process.env.FUNCTIONS_WORKER_RUNTIME)
 
-            const torrent = client.add(addTarget, torrent => {
-                // If we just want the file list, return it
-                if (fileIndex === null || fileIndex === undefined) {
-                    const filesInfo = torrent.files.map((f, i) => ({
-                        index: i,
-                        name: f.name,
-                        length: f.length
-                    }))
-                    res.json({ 
-                        infoHash: torrent.infoHash,
-                        name: torrent.name,
-                        files: filesInfo
-                    })
-                    resolve()
-                    return
+        if (runningServerless) {
+            return res.status(200).json({
+                infoHash: parsed && parsed.infoHash,
+                name: parsed && parsed.name,
+                files: null,
+                note: 'Metadata fetching and streaming are not supported in serverless functions.\n' +
+                      'To fetch file lists or stream bytes, run the long-running Node server (stream.js) on a VPS or locally.',
+                guidance: {
+                    run_local: 'node stream.js',
+                    deploy_options: ['Render (Web Service)', 'DigitalOcean App Platform', 'AWS EC2']
                 }
-
-                // For Vercel, we'll need to return a different URL format
-                // You'll need to set up a separate streaming server or use a different approach
-                // For now, we'll return the torrent info
-                res.json({ 
-                    error: 'Direct streaming not supported in serverless environment',
-                    info: {
-                        infoHash: torrent.infoHash,
-                        name: torrent.name,
-                        selectedFile: torrent.files[fileIndex || 0].name
-                    }
-                })
-                resolve()
             })
+        }
 
-            // Handle errors
-            torrent.on('error', err => {
-                console.error('Torrent error:', err)
-                res.status(500).json({ error: 'Torrent error: ' + err.message })
-                resolve()
-            })
-
-            // Set a timeout
-            setTimeout(() => {
-                if (!res.writableEnded) {
-                    res.status(504).json({ error: 'Timeout waiting for torrent metadata' })
-                    resolve()
-                }
-            }, 30000)
-        })
+        // If not serverless, fall back to a safe error indicating the environment differs
+        res.status(501).json({ error: 'Server environment does not support torrent metadata fetching. Please run the long-running server.' })
     } catch (error) {
         console.error('Error handling request:', error)
-        res.status(500).json({ error: error.message })
+        res.status(500).json({ error: error && error.message ? error.message : String(error) })
     }
 }

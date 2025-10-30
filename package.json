@@ -4,8 +4,9 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon api/start-stream.js",
-    "start": "node api/start-stream.js"
+    "dev": "nodemon stream.js",
+    "start": "node stream.js",
+    "vercel-start": "node api/start-stream.js"
   },
   "keywords": [],
   "author": "",
